@@ -4,7 +4,8 @@
     <AzureFunctionsVersion>v3</AzureFunctionsVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="3.0.1" />
+    <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="3.0.1"/>
+    <PackageReference Include="Alexa.NET" Version="1.11.0"/>
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">
