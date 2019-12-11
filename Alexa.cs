@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
@@ -11,14 +10,19 @@ using Alexa.NET;
 using Alexa.NET.Response;
 using Alexa.NET.Request;
 using Alexa.NET.Request.Type;
+using Microsoft.Azure.Cosmos.Table;
 
 namespace SmartyBug
 {
     public static class Alexa
     {
+        private static String DeviceId = System.Environment.GetEnvironmentVariable("DeviceId", EnvironmentVariableTarget.Process);
+        private static String SmartyBugStorageConnectionString = System.Environment.GetEnvironmentVariable("SmartyBugStorageConnectionString", EnvironmentVariableTarget.Process);
+
         [FunctionName("Alexa")]
         public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequest req, ILogger log)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequest req, 
+            ILogger log)
         {
             SkillResponse response = null;
 
@@ -45,33 +49,48 @@ namespace SmartyBug
                 var intentRequest = skillRequest.Request as IntentRequest;
                 if (intentRequest.Intent.Name == "Status")
                 {
-                    //var speechlet = new SmartyBugSpeechlet();
-                    //return await speechlet.GetResponseAsync(req);
+                    response = GetSensorData(log);
                 }
             }
-    
            return new OkObjectResult(response);
         }        
-    }
-    public class SmartyBugSpeechlet // : SpeechletBase, ISpeechletWithContext
-    {
-         public SkillResponse FunctionHandler(SkillRequest input)
+        private static SkillResponse GetSensorData(ILogger log)
         {
-            // your function logic goes here
-            
-            var intentRequest = input.Request as IntentRequest;
-            // check the name to determine what you should do
-            if (intentRequest.Intent.Name.Equals("MyIntentName"))
-            {
-                if(intentRequest.DialogState.Equals("COMPLETED"))
-                {
-                    // get the slots
-                    var firstValue = intentRequest.Intent.Slots["FirstSlot"].Value;
-                }
-            } 
-            return ResponseBuilder.Empty();
-            //return new SkillResponse("OK");
-        } 
+            String reply = "";
+            log.LogInformation("Getting Sensor Data");
+            log.LogInformation("Device Id: {0}", DeviceId);
 
+            CloudStorageAccount storageAccount = CloudStorageAccount.Parse(SmartyBugStorageConnectionString);
+            CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
+            CloudTable table = tableClient.GetTableReference("SmartyBugTelemetry");
+            TableQuery<SmartyBugEntity> query = new TableQuery<SmartyBugEntity>().Where(
+                TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, DeviceId)).Take(1);
+
+            foreach (SmartyBugEntity entity in table.ExecuteQuery(query))
+            {                
+                reply = String.Format("The last update I got was on {0} at {1} when the Humidity was {2}, the Temperature was {3}, the Light was {4}, and the Soil Moisture was {5}",
+                     entity.Timestamp.ToString("M"),
+                     entity.Timestamp.ToString("t"),
+                     entity.Humidity,
+                     entity.Temperature,
+                     entity.Light,
+                     entity.SoilMoisture);
+                log.LogInformation(reply);
+            }
+            return ResponseBuilder.Tell(reply);
+        }
+        public class SmartyBugEntity : TableEntity
+        {
+            public SmartyBugEntity() { }
+            public SmartyBugEntity(string partitionKey, string rowKey)
+            {
+                this.PartitionKey = partitionKey;
+                this.RowKey = rowKey;
+            }
+            public int Humidity { get; set; }
+            public int Light { get; set; }
+            public int SoilMoisture { get; set; }
+            public int Temperature { get; set; }
+            }
     }
 }
